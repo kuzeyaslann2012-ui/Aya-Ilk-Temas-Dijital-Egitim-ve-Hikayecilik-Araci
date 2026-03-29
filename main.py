@@ -1,237 +1,201 @@
+
 import pygame
 import sys
-import os
 import random
-import time
-import math
+
+# --- AYARLAR VE RENKLER ---
+WIDTH, HEIGHT = 800, 600
+FPS = 60
+WHITE = (255, 255, 255)
+BLACK = (10, 10, 20)
+GRAY = (150, 150, 150)
+DARK_GRAY = (100, 100, 100)
+RED = (200, 50, 50)
+GREEN = (50, 200, 50)
+BLUE = (50, 100, 255)
+GOLD = (255, 215, 0)
 
 pygame.init()
-
-# ---------------- SETTINGS ----------------
-WIDTH, HEIGHT = 1000, 700
-FPS = 60
-
-WHITE = (255,255,255)
-BLACK = (0,0,0)
-GRAY = (40,40,40)
-GREEN = (0,255,0)
-RED = (255,0,0)
-YELLOW = (255,255,0)
-
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("🚀 Moon Mission PRO")
+pygame.display.set_caption("AYA YOLCULUK - İnteraktif Piksel Macera")
 clock = pygame.time.Clock()
-FONT = pygame.font.SysFont("consolas", 20)
 
-# ---------------- ASSET SYSTEM ----------------
-def load_image(path, size=(80,80)):
-    if os.path.exists(path):
-        img = pygame.image.load(path).convert_alpha()
-        return pygame.transform.scale(img, size)
-    else:
-        surf = pygame.Surface(size, pygame.SRCALPHA)
-        pygame.draw.rect(surf,(random.randint(100,255),random.randint(100,255),random.randint(100,255)),(0,0,*size))
-        return surf
+font = pygame.font.SysFont("Courier", 24, bold=True)
+large_font = pygame.font.SysFont("Courier", 48, bold=True)
 
-def load_bg(path):
-    if os.path.exists(path):
-        return pygame.transform.scale(pygame.image.load(path), (WIDTH, HEIGHT))
-    else:
-        surf = pygame.Surface((WIDTH,HEIGHT))
-        surf.fill((10,10,30))
-        # yıldız ekle
-        for _ in range(200):
-            pygame.draw.circle(surf, WHITE, (random.randint(0,WIDTH), random.randint(0,HEIGHT)), 1)
-        return surf
+# --- OYUN DEĞİŞKENLERİ ---
+stage = "START"  # START, PICK_PARTS, JOURNEY, CHOICE_1, CHOICE_2, FLAG_MISSION, ENDING, CREDITS
+selected_items = []
+stars = [[random.randint(0, WIDTH), random.randint(0, HEIGHT)] for _ in range(100)]
+rocket_y = HEIGHT - 150
+alive = True
+flag_placed = False
 
-# ---------------- CHARACTER ----------------
-class Player:
-    def __init__(self, name, role, stats):
-        self.name = name
-        self.role = role
-        self.stats = stats
-        self.image = load_image(f"assets/characters/{name}.png", (60,60))
-        self.angle = 0  # bakış yönü
+# --- GÖRSEL ÇİZİM FONKSİYONLARI ---
+def draw_pixel_human(x, y, color):
+    pygame.draw.rect(screen, (240, 200, 150), (x+5, y, 10, 10)) # Kafa
+    pygame.draw.rect(screen, (100, 200, 255), (x+7, y+2, 6, 4)) # Kask
+    pygame.draw.rect(screen, color, (x, y+10, 20, 20))           # Gövde
+    pygame.draw.rect(screen, color, (x+2, y+30, 6, 10))         # Bacak 1
+    pygame.draw.rect(screen, color, (x+12, y+30, 6, 10))        # Bacak 2
 
-class AIPlayer(Player):
-    def comment(self):
-        if self.stats["intelligence"] > 7:
-            return random.choice([
-                "Bu parça mantıklı.",
-                "Yakıt önemli!",
-                "Bu güvenli görünüyor."
-            ])
+def draw_rocket(x, y):
+    pygame.draw.polygon(screen, GRAY, [(x, y), (x-20, y+40), (x+20, y+40)]) # Burun
+    pygame.draw.rect(screen, WHITE, (x-20, y+40, 40, 80)) # Gövde
+    pygame.draw.rect(screen, BLUE, (x-5, y+55, 10, 10)) # Pencere
+    pygame.draw.polygon(screen, RED, [(x-20, y+100), (x-40, y+120), (x-20, y+120)]) # Sol kanat
+    pygame.draw.polygon(screen, RED, [(x+20, y+100), (x+40, y+120), (x+20, y+120)]) # Sağ kanat
+    if stage == "JOURNEY":
+        pygame.draw.circle(screen, (255, 165, 0), (x, y+130 + random.randint(0,10)), 10)
+
+def draw_moon_ground():
+    # Ay zemini (Piksel kraterli)
+    pygame.draw.rect(screen, DARK_GRAY, (0, HEIGHT - 150, WIDTH, 150))
+    pygame.draw.ellipse(screen, GRAY, (100, HEIGHT - 120, 80, 40))
+    pygame.draw.ellipse(screen, GRAY, (350, HEIGHT - 140, 120, 50))
+    pygame.draw.ellipse(screen, GRAY, (600, HEIGHT - 100, 90, 30))
+
+def draw_turkish_flag(x, y):
+    # Direk
+    pygame.draw.rect(screen, WHITE, (x, y, 4, 80))
+    # Kırmızı Zemin
+    pygame.draw.rect(screen, RED, (x+4, y, 60, 40))
+    # Ay
+    pygame.draw.circle(screen, WHITE, (x+25, y+20), 12)
+    pygame.draw.circle(screen, RED, (x+29, y+20), 10) # Ayı kesmek için
+    # Yıldız (Piksel yaklaşımı)
+    pygame.draw.circle(screen, WHITE, (x+45, y+20), 4)
+
+def draw_stars():
+    for star in stars:
+        pygame.draw.circle(screen, WHITE, (star[0], star[1]), 1)
+        if stage == "JOURNEY":
+            star[1] += 5 
+            if star[1] > HEIGHT: star[1] = 0
+
+def show_text(text, x, y, color=WHITE, font_type=font):
+    img = font_type.render(text, True, color)
+    screen.blit(img, (x, y))
+
+# --- ANA DÖNGÜ ---
+running = True
+while running:
+    screen.fill(BLACK)
+    draw_stars()
+    
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        
+        if event.type == pygame.KEYDOWN:
+            if stage == "START":
+                stage = "PICK_PARTS"
+            
+            elif stage == "PICK_PARTS":
+                if event.key == pygame.K_1 and "Kalkan" not in selected_items: selected_items.append("Kalkan")
+                if event.key == pygame.K_2 and "Bant" not in selected_items: selected_items.append("Bant")
+                if event.key == pygame.K_3 and "Yemek" not in selected_items: selected_items.append("Yemek")
+                if event.key == pygame.K_4 and "Oksijen" not in selected_items: selected_items.append("Oksijen")
+                if len(selected_items) >= 2: 
+                    stage = "JOURNEY"
+            
+            elif stage == "CHOICE_1":
+                if event.key == pygame.K_a: 
+                    if "Kalkan" in selected_items: stage = "CHOICE_2"
+                    else: 
+                        alive = False
+                        stage = "ENDING"
+                if event.key == pygame.K_b: stage = "CHOICE_2"
+
+            elif stage == "CHOICE_2":
+                if event.key == pygame.K_a:
+                    if "Bant" not in selected_items: alive = False
+                    if alive: stage = "FLAG_MISSION"
+                    else: stage = "ENDING"
+                if event.key == pygame.K_b: 
+                    stage = "FLAG_MISSION"
+            
+            elif stage == "FLAG_MISSION":
+                if event.key == pygame.K_f:
+                    flag_placed = True
+                    stage = "ENDING"
+
+            elif stage == "ENDING":
+                stage = "CREDITS"
+
+    # --- SAHNE YÖNETİMİ ---
+    if stage == "START":
+        draw_moon_ground()
+        draw_turkish_flag(WIDTH//2 + 100, HEIGHT - 230)
+        draw_rocket(WIDTH//2 - 150, HEIGHT - 270)
+        for i in range(3):
+            draw_pixel_human(WIDTH//2 - 100 + (i*50), HEIGHT - 180, WHITE)
+            
+        show_text("AYA YOLCULUK", WIDTH//2 - 180, 50, GOLD, large_font)
+        show_text("TÜRKİYE UZAY GÖREVİ", WIDTH//2 - 150, 120, WHITE)
+        show_text("BAŞLAMAK İÇİN BİR TUŞA BAS", WIDTH//2 - 180, 250, GREEN)
+
+    elif stage == "PICK_PARTS":
+        show_text("ROKET İÇİN 2 PARÇA SEÇİN:", 50, 50, GOLD)
+        show_text("1- KALKAN (Meteorlar için)", 50, 150, BLUE)
+        show_text("2- BANT (Tamirat için)", 50, 200, BLUE)
+        show_text("3- YEMEK VE SU (Yol uzarsa)", 50, 250, BLUE)
+        show_text("4- YEDEK OKSİJEN", 50, 300, BLUE)
+        show_text(f"Seçilenler: {', '.join(selected_items)}", 50, 450, GREEN)
+
+    elif stage == "JOURNEY":
+        draw_rocket(WIDTH//2, rocket_y)
+        rocket_y -= 3
+        if rocket_y < 100:
+            stage = "CHOICE_1"
+
+    elif stage == "CHOICE_1":
+        draw_rocket(WIDTH//2, 150)
+        show_text("UYARI: METEOR GELİYOR!", WIDTH//2 - 150, 50, RED)
+        show_text("A) SAĞA MANEVRA (Riskli ama hızlı)", 100, 450)
+        show_text("B) SOLA MANEVRA (Uzun ama güvenli)", 100, 500)
+
+    elif stage == "CHOICE_2":
+        draw_rocket(WIDTH//2, 150)
+        draw_moon_ground()
+        show_text("AY YÜZEYİNE GELİNDİ. İNİŞ TARZI?", WIDTH//2 - 220, 50, BLUE)
+        show_text("A) SERT VE HIZLI İNİŞ", 100, 450)
+        show_text("B) YAVAŞ VE GÜVENLİ İNİŞ", 100, 500)
+        
+    elif stage == "FLAG_MISSION":
+        draw_moon_ground()
+        draw_rocket(WIDTH//2 - 150, HEIGHT - 270)
+        draw_pixel_human(WIDTH//2, HEIGHT - 180, WHITE)
+        show_text("AY'A BAŞARIYLA İNDİNİZ!", WIDTH//2 - 160, 50, GREEN)
+        show_text("TÜRK BAYRAĞINI DİKMEK İÇİN 'F' TUŞUNA BAS!", WIDTH//2 - 280, 100, GOLD)
+
+    elif stage == "ENDING":
+        if alive:
+            draw_moon_ground()
+            draw_rocket(WIDTH//2 - 150, HEIGHT - 270)
+            if flag_placed:
+                draw_turkish_flag(WIDTH//2 + 50, HEIGHT - 230)
+                show_text("GÖREV TAMAMLANDI: BAYRAK AY'DA DALGALANIYOR!", 50, 50, GREEN)
+            else:
+                show_text("AY'A İNDİN AMA BAYRAK DİKMEDİN...", 50, 50, GOLD)
+            
+            for i in range(3): 
+                draw_pixel_human(WIDTH//2 - 50 + (i*60), HEIGHT - 180, WHITE)
         else:
-            return random.choice([
-                "Riskli olabilir!",
-                "Deneyelim bakalım.",
-                "Hızlı seç!"
-            ])
+            show_text("ROKET PARÇALANDI... GÖREV BAŞARISIZ.", 150, 250, RED)
+            
+        show_text("DEVAM ETMEK İÇİN BİR TUŞA BASIN", 150, 500, GRAY)
 
-# ---------------- ROCKET ----------------
-class Rocket:
-    def __init__(self):
-        self.parts = []
+    elif stage == "CREDITS":
+        show_text("KOD YAZAN:", WIDTH//2 - 100, 100, GOLD)
+        show_text("Kuzey Aslan", WIDTH//2 - 80, 140)
+        show_text("TASARIMCILAR:", WIDTH//2 - 100, 220, GOLD)
+        show_text("Zeynep Azra - Elif Saracoğlu", WIDTH//2 - 180, 260)
+        show_text("PROJE YARDIMCISI:", WIDTH//2 - 100, 340, GOLD)
+        show_text("Salih Dalkılıç", WIDTH//2 - 80, 380)
 
-    def add_part(self, part):
-        if len(self.parts) < 5 and part not in self.parts:
-            self.parts.append(part)
+    pygame.display.flip()
+    clock.tick(FPS)
 
-    def score(self):
-        return sum([p["power"] for p in self.parts])
-
-# ---------------- GAME ----------------
-class Game:
-    def __init__(self):
-        self.scene = "menu"
-        self.start_time = None
-
-        self.characters = [
-            Player("Elif","Scientist",{"intelligence":9,"speed":5}),
-            Player("Zeynep","Engineer",{"intelligence":8,"speed":6}),
-            Player("Rüzgar","Explorer",{"intelligence":6,"speed":9}),
-            Player("Salih","Pilot",{"intelligence":7,"speed":7}),
-            Player("Kuzey","Leader",{"intelligence":8,"speed":6}),
-        ]
-
-        self.selected = None
-        self.ai_team = []
-
-        self.rocket = Rocket()
-
-        self.parts = [{"name":f"Part{i}","power":random.randint(1,10)} for i in range(25)]
-
-        self.bg_space = load_bg("assets/backgrounds/space.png")
-        self.bg_moon = load_bg("assets/backgrounds/moon.png")
-
-        self.dialog = ""
-
-        # roket y konumu
-        self.rocket_y = HEIGHT
-
-    # -------- MENU --------
-    def draw_menu(self):
-        screen.fill(BLACK)
-        text = FONT.render("Karakter Seç", True, WHITE)
-        screen.blit(text,(400,50))
-
-        mouse_pos = pygame.mouse.get_pos()
-        click = pygame.mouse.get_pressed()[0]
-
-        for i,char in enumerate(self.characters):
-            x = 100 + i*150
-            rect = pygame.Rect(x,200,80,80)
-
-            screen.blit(char.image,(x,200))
-            screen.blit(FONT.render(char.name,True,WHITE),(x,300))
-
-            if rect.collidepoint(mouse_pos) and click:
-                self.selected = char
-                self.ai_team = [AIPlayer(c.name,c.role,c.stats) for c in self.characters if c != char]
-                pygame.time.delay(200)
-                self.scene = "build"
-
-    # -------- BUILD --------
-    def draw_build(self):
-        screen.fill(GRAY)
-        screen.blit(FONT.render("Roket Parçalarını Seç (5 tane)",True,WHITE),(300,20))
-
-        mouse_pos = pygame.mouse.get_pos()
-        click = pygame.mouse.get_pressed()[0]
-
-        for i,part in enumerate(self.parts):
-            x = 50 + (i%10)*90
-            y = 100 + (i//10)*100
-            rect = pygame.Rect(x,y,70,70)
-            pygame.draw.rect(screen,YELLOW,rect)
-            screen.blit(FONT.render(str(part["power"]),True,BLACK),(x+20,y+20))
-
-            if rect.collidepoint(mouse_pos) and click:
-                self.rocket.add_part(part)
-                self.dialog = random.choice([ai.comment() for ai in self.ai_team])
-                pygame.time.delay(100)
-
-        # slotlar
-        for i in range(5):
-            x = 300 + i*100
-            y = 500
-            rect = pygame.Rect(x,y,70,70)
-            pygame.draw.rect(screen,WHITE,rect,2)
-            if len(self.rocket.parts) > i:
-                p = self.rocket.parts[i]
-                screen.blit(FONT.render(str(p["power"]),True,WHITE),(x+20,y+20))
-
-        screen.blit(FONT.render(self.dialog,True,GREEN),(50,650))
-        if len(self.rocket.parts) == 5:
-            screen.blit(FONT.render("SPACE tuşuna bas →",True,WHITE),(700,650))
-
-    # -------- SPACE --------
-    def draw_space(self):
-        screen.blit(self.bg_space,(0,0))
-
-        # ease-out yavaşlama
-        if self.start_time:
-            t = time.time() - self.start_time
-            duration = 30  # toplam uçuş süresi saniye
-            progress = min(1, t/duration)
-            ease_progress = 1 - (1-progress)**2  # ease-out quadratic
-            self.rocket_y = HEIGHT - ease_progress * (HEIGHT - 100)
-
-        # roket çiz
-        rocket_rect = pygame.Rect(WIDTH//2-40, self.rocket_y, 80, 120)
-        pygame.draw.rect(screen, RED, rocket_rect)
-
-        # karakterler roketin üstüne dönsün
-        for i,ai in enumerate([self.selected]+self.ai_team):
-            angle = 0 if i==0 else 180  # basit: arka karakterler 180° dönsün
-            img = pygame.transform.rotate(ai.image, angle)
-            x = WIDTH//2 - img.get_width()//2
-            y = self.rocket_y - 60 - i*40
-            screen.blit(img,(x,y))
-
-        remaining = max(0, int(duration - (time.time() - self.start_time)))
-        screen.blit(FONT.render(f"Aya varış: {remaining}s",True,WHITE),(20,20))
-
-        if random.random() < 0.02:
-            self.dialog = random.choice(["Meteor geliyor!","Oksijen düşüyor!","Sistem hatası!"])
-        screen.blit(FONT.render(self.dialog,True,YELLOW),(20,60))
-
-        if self.rocket_y <= 100:
-            self.scene = "moon"
-
-    # -------- MOON --------
-    def draw_moon(self):
-        screen.blit(self.bg_moon,(0,0))
-        screen.blit(FONT.render("AYA HOŞGELDİN 🌕",True,WHITE),(400,50))
-        for i,ai in enumerate([self.selected]+self.ai_team):
-            screen.blit(FONT.render(ai.name,True,WHITE),(100,200+i*40))
-
-    # -------- RUN --------
-    def run(self):
-        while True:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-                if event.type == pygame.KEYDOWN:
-                    if self.scene == "build" and event.key == pygame.K_SPACE:
-                        if len(self.rocket.parts) == 5:
-                            self.start_time = time.time()
-                            self.rocket_y = HEIGHT
-                            self.scene = "space"
-
-            if self.scene == "menu":
-                self.draw_menu()
-            elif self.scene == "build":
-                self.draw_build()
-            elif self.scene == "space":
-                self.draw_space()
-            elif self.scene == "moon":
-                self.draw_moon()
-
-            pygame.display.update()
-            clock.tick(FPS)
-
-# ---------------- START ----------------
-game = Game()
-game.run()
+pygame.quit()
+sys.exit()
